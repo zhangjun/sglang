@@ -86,7 +86,7 @@ from sglang.srt.utils import (
     set_ulimit,
 )
 from sglang.utils import get_exception_traceback
-import contextlib import asynccontextmanager
+from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
 

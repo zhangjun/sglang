@@ -143,10 +143,27 @@ class ModelRunner:
             }
         )
 
+        def log_gpu_memory(message):
+            import torch.distributed as dist
+            if self.device != "cuda":
+                return
+            if dist.is_initialized() and dist.get_rank() == 0:
+                allocated = torch.cuda.memory_allocated() / 1024**3
+                reserved = torch.cuda.memory_reserved() / 1024**3
+                total = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                available = total - reserved
+                logger.info(f"{message} gpu_mem_usage: "
+                            f"allocated {allocated:.2f} GB, "
+                            f"reserved {reserved:.2f} GB, "
+                            f"total {total:.2f} GB, "
+                            f"available {available:.2f} GB")
+
         # Init componnets
         min_per_gpu_memory = self.init_torch_distributed()
+        log_gpu_memory("init_dist_env")
         self.sampler = Sampler()
         self.load_model()
+        log_gpu_memory("load_model")
         if server_args.lora_paths is not None:
             self.init_lora_manager()
         self.init_memory_pool(
@@ -154,10 +171,14 @@ class ModelRunner:
             server_args.max_running_requests,
             server_args.max_total_tokens,
         )
+        log_gpu_memory("init_memory_pool")
         if self.device == "cuda":
             self.init_cublas()
+            log_gpu_memory("init_cublas")
             self.init_attention_backend()
+            log_gpu_memory("init_attention_backend")
             self.init_cuda_graphs()
+            log_gpu_memory("init_cuda_graphs")
         else:
             self.cuda_graph_runner = None
             self.init_attention_backend()

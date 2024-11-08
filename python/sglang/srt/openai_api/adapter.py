@@ -785,6 +785,22 @@ async def v1_completions(tokenizer_manager, raw_request: Request):
                     stream_buffers[index] = stream_buffer
                     n_prev_tokens[index] = n_prev_token
 
+                    # last msg of stream output, add usage
+                    if finish_reason and finish_reason['type']:
+                        total_prompt_tokens = sum(
+                            tokens
+                            for i, tokens in prompt_tokens.items()
+                            if i % request.n == 0
+                        )
+                        total_completion_tokens = sum(
+                            tokens for tokens in completion_tokens.values()
+                        )
+                        chunk.usage = UsageInfo(
+                            prompt_tokens=total_prompt_tokens,
+                            completion_tokens=total_completion_tokens,
+                            total_tokens=total_prompt_tokens + total_completion_tokens,
+                        )
+
                     yield f"data: {chunk.model_dump_json()}\n\n"
                 if request.stream_options and request.stream_options.include_usage:
                     total_prompt_tokens = sum(

@@ -86,6 +86,7 @@ from sglang.srt.utils import (
     set_ulimit,
 )
 from sglang.utils import get_exception_traceback
+import contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
 
@@ -95,8 +96,17 @@ prometheus_multiproc_dir: tempfile.TemporaryDirectory
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
-
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    # 添加对MaaS优雅关闭的支持
+    graceful_delay_sec = int(os.getenv('MAAS_GRACEFUL_SHUTDOWN_DELAY_SECONDS', 10))
+    if graceful_delay_sec > 0 :
+        if graceful_delay_sec > 60:
+            graceful_delay_sec = 60
+        logger.info("Sleep for %d seconds and wait for the request to end.", graceful_delay_sec)
+        time.sleep(graceful_delay_sec)
+app = FastAPI(lifespan=lifespan)
 tokenizer_manager: TokenizerManager = None
 
 app.add_middleware(
@@ -113,6 +123,10 @@ async def health() -> Response:
     """Check the health of the http server."""
     return Response(status_code=200)
 
+@app.get("/v1/ready")
+async def ready() -> Response:
+    """Check the health of the http server."""
+    return Response(status_code=200)
 
 @app.get("/health_generate")
 async def health_generate(request: Request) -> Response:
@@ -300,6 +314,11 @@ def available_models():
         model_cards.append(ModelCard(id=served_model_name, root=served_model_name))
     return ModelList(data=model_cards)
 
+@app.get("/v1/shutdown")
+def shutdown():
+    logger.info("shutdown")
+    kill_child_process(os.getpid(), include_self=True)
+    logger.info("shutdown done")
 
 @app.post("/v1/files")
 async def openai_v1_files(file: UploadFile = File(...), purpose: str = Form("batch")):

@@ -116,7 +116,21 @@ class CudaGraphRunner:
         if model_runner.server_args.disable_cuda_graph_padding:
             self.capture_bs = list(range(1, 32)) + [64, 128]
         else:
-            self.capture_bs = [1, 2, 4] + [i * 8 for i in range(1, 21)]
+            # self.capture_bs = [1, 2, 4] + [i * 8 for i in range(1, 10)]
+
+            padding = int(os.getenv("CUDA_GRAPH_PADDING", "8"))
+            max_size = int(os.getenv("CUDA_GRAPH_MAX_SIZE", "80"))
+            self.capture_bs = [1]
+            i = 0
+            while True:
+                size = 2 ** i
+                if size >= padding:
+                    break
+                self.capture_bs.append(int(2 ** i))
+                i += 1
+                
+            self.capture_bs += list(range(padding, max_size + padding, padding))
+
         self.capture_bs = [
             bs
             for bs in self.capture_bs

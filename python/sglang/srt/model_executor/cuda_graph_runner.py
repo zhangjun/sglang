@@ -20,6 +20,7 @@ limitations under the License.
 import bisect
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Callable
+import os
 
 import torch
 from vllm.distributed.parallel_state import graph_capture

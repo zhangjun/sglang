@@ -1,6 +1,7 @@
 import copy
 import json
 import logging
+import os
 import time
 import uuid
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
@@ -379,6 +380,15 @@ class OpenAIServingChat(OpenAIServingBase):
         cached_tokens = {}
         hidden_states = {}
 
+        # batch send
+        last_yield_time = time.perf_counter()
+        should_yield = True
+        batch_interval = 0.0
+        batch_size = int(os.environ.get("SGL_STREAM_OUT_BATCH", "0"))
+        if batch_size > 0:
+            should_yield = False
+            batch_interval = float(os.environ.get("SGL_STREAM_OUT_BATCH_INTERVAL", "1"))
+
         try:
             async for content in self.tokenizer_manager.generate_request(
                 adapted_request, raw_request
@@ -430,6 +440,16 @@ class OpenAIServingChat(OpenAIServingBase):
                 stream_buffer = stream_buffers.get(index, "")
                 delta = content["text"][len(stream_buffer) :]
                 stream_buffers[index] = stream_buffer + delta
+
+                if len(delta) > batch_size:
+                    should_yield = True
+                elif time.perf_counter() - last_yield_time >= batch_interval:
+                    should_yield = True
+                elif delta and delta[-1] in "\n":
+                    should_yield = True
+
+                if not should_yield:
+                    continue
 
                 # Handle reasoning content
                 if (
@@ -495,6 +515,7 @@ class OpenAIServingChat(OpenAIServingBase):
                             model=request.model,
                         )
                         yield f"data: {chunk.model_dump_json()}\n\n"
+                last_yield_time = time.perf_counter()
 
             # Final chunk with finish_reason
             finish_reason_chunk = ChatCompletionStreamResponse(
